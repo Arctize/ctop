@@ -3,7 +3,7 @@
 A top-like terminal UI for Docker, in the spirit of htop/btop, with the
 container workflow of k9s: live stats, compose-aware grouping, logs, shell,
 attach, and start/stop/delete for containers, images, networks and volumes.
-It also works against remote daemons over ssh.
+It also works against remote daemons over ssh, and with podman.
 
 ```
  ctop  ssh://node · node · docker 29.9.3 · 8 cpu · 31.2G                         12:03:44
@@ -33,6 +33,7 @@ ctop                   # local daemon (DOCKER_HOST, DOCKER_CONTEXT or current do
 ctop -H node           # ssh://node: docker on 'node' via ssh, honoring ~/.ssh/config
 ctop -H me@box:2222    # ssh with user and port
 ctop -H tcp://10.0.0.5:2375
+ctop -H box --runtime podman  # podman (see below)
 ctop -c mycontext      # a docker context
 ```
 
@@ -48,6 +49,7 @@ ctop needs key or agent auth, because later connections can't prompt.
 |---|---|
 | `-H, --host` | docker host (`name` → `ssh://name`, `ssh://`, `tcp://`, `unix://`) |
 | `-c, --context` | docker context |
+| `--runtime` | `auto` (default), `docker` or `podman` |
 | `-i, --interval` | refresh interval (default `2s`) |
 | `-r, --running` | start with stopped containers hidden |
 | `--no-group` | start without compose grouping |
@@ -96,3 +98,13 @@ an image · `X` prune
   They work over ssh too.
 - Volume sizes come from `docker system df` and load when you open the
   Volumes tab, because computing them can be slow on big hosts.
+
+## Podman
+
+ctop talks to podman through its Docker-compatible API socket. Locally, when
+there is no docker socket, it falls back to `$XDG_RUNTIME_DIR/podman/podman.sock`
+and `/run/podman/podman.sock`. Over ssh it runs `docker system dial-stdio` if
+`docker` exists on the remote and `podman system dial-stdio` otherwise
+(override with `--runtime`). The podman API service must be available on that
+host, e.g. `systemctl enable --now podman.socket` (rootful) or
+`systemctl --user enable --now podman.socket` (rootless).

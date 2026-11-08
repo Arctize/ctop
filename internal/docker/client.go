@@ -40,6 +40,9 @@ type Client struct {
 type Options struct {
 	// NoSSHMux disables the ssh ControlMaster connection sharing ctop sets up.
 	NoSSHMux bool
+	// Runtime selects the remote engine CLI used for ssh hosts: "auto"
+	// (docker if installed on the remote, else podman), "docker" or "podman".
+	Runtime string
 }
 
 // APIError is an error response from the daemon.
@@ -111,7 +114,11 @@ func New(spec HostSpec, opts Options) (*Client, error) {
 			return nil, fmt.Errorf("invalid ssh host %q", spec.Host)
 		}
 		c.sshArgs = sshArgs(u, !opts.NoSSHMux)
-		args := append(append([]string{}, c.sshArgs...), "docker", "system", "dial-stdio")
+		remote, err := dialStdioCommand(opts.Runtime)
+		if err != nil {
+			return nil, err
+		}
+		args := append(append([]string{}, c.sshArgs...), remote)
 		c.dial = func(ctx context.Context) (net.Conn, error) { return dialCmd(ctx, "ssh", args, c.detached.Load()) }
 	default:
 		return nil, fmt.Errorf("unsupported docker host scheme %q (use unix://, tcp:// or ssh://)", u.Scheme)
@@ -165,6 +172,19 @@ func loadTLS(files *TLSFiles, serverName string) (*tls.Config, error) {
 		cfg.Certificates = []tls.Certificate{cert}
 	}
 	return cfg, nil
+}
+
+// dialStdioCommand returns the remote shell command that proxies stdio to the
+// engine API socket.
+func dialStdioCommand(runtime string) (string, error) {
+	switch runtime {
+	case "", "auto":
+		return "if command -v docker >/dev/null 2>&1; then exec docker system dial-stdio; " +
+			"else exec podman system dial-stdio; fi", nil
+	case "docker", "podman":
+		return "exec " + runtime + " system dial-stdio", nil
+	}
+	return "", fmt.Errorf("unknown runtime %q (use auto, docker or podman)", runtime)
 }
 
 // sshArgs builds the ssh argument list (without remote command). When mux is

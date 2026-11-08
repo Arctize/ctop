@@ -44,12 +44,12 @@ func NormalizeHost(h string) string {
 // Resolve figures out the daemon to talk to, mirroring the docker CLI's
 // precedence: -H flag, --context flag, DOCKER_HOST, DOCKER_CONTEXT, the
 // current context in the CLI config, then the default local socket.
-func Resolve(flagHost, flagContext string) (HostSpec, error) {
+func Resolve(flagHost, flagContext, runtime string) (HostSpec, error) {
 	if flagHost != "" {
 		return HostSpec{Host: NormalizeHost(flagHost), Source: "flag"}, nil
 	}
 	if flagContext != "" {
-		return fromContext(flagContext)
+		return fromContext(flagContext, runtime)
 	}
 	if h := os.Getenv("DOCKER_HOST"); h != "" {
 		spec := HostSpec{Host: NormalizeHost(h), Source: "DOCKER_HOST"}
@@ -67,15 +67,15 @@ func Resolve(flagHost, flagContext string) (HostSpec, error) {
 		return spec, nil
 	}
 	if c := os.Getenv("DOCKER_CONTEXT"); c != "" {
-		return fromContext(c)
+		return fromContext(c, runtime)
 	}
 	if c := currentContext(); c != "" && c != "default" {
-		spec, err := fromContext(c)
+		spec, err := fromContext(c, runtime)
 		if err == nil {
 			return spec, nil
 		}
 	}
-	return HostSpec{Host: defaultHost(), Source: "default"}, nil
+	return HostSpec{Host: defaultHost(runtime), Source: "default"}, nil
 }
 
 func configDir() string {
@@ -100,9 +100,9 @@ func currentContext() string {
 	return cfg.CurrentContext
 }
 
-func fromContext(name string) (HostSpec, error) {
+func fromContext(name, runtime string) (HostSpec, error) {
 	if name == "default" {
-		return HostSpec{Host: defaultHost(), Source: "context default"}, nil
+		return HostSpec{Host: defaultHost(runtime), Source: "context default"}, nil
 	}
 	sum := sha256.Sum256([]byte(name))
 	id := hex.EncodeToString(sum[:])
@@ -136,17 +136,29 @@ func fromContext(name string) (HostSpec, error) {
 	return spec, nil
 }
 
-func defaultHost() string {
+func defaultHost(runtime string) string {
 	const sys = "/var/run/docker.sock"
-	if _, err := os.Stat(sys); err == nil {
-		return "unix://" + sys
+	var cands []string
+	rt := os.Getenv("XDG_RUNTIME_DIR")
+	if runtime != "podman" {
+		cands = append(cands, sys)
+		if rt != "" {
+			cands = append(cands, filepath.Join(rt, "docker.sock")) // rootless docker
+		}
 	}
-	// rootless docker
-	if rt := os.Getenv("XDG_RUNTIME_DIR"); rt != "" {
-		p := filepath.Join(rt, "docker.sock")
+	if runtime != "docker" {
+		if rt != "" {
+			cands = append(cands, filepath.Join(rt, "podman", "podman.sock"))
+		}
+		cands = append(cands, "/run/podman/podman.sock")
+	}
+	for _, p := range cands {
 		if _, err := os.Stat(p); err == nil {
 			return "unix://" + p
 		}
+	}
+	if runtime == "podman" && len(cands) > 0 {
+		return "unix://" + cands[0]
 	}
 	return "unix://" + sys
 }

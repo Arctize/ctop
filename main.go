@@ -24,14 +24,15 @@ func main() {
 		running     = flag.BoolP("running", "r", false, "show only running containers on start")
 		noGroup     = flag.Bool("no-group", false, "don't group containers by compose project")
 		tail        = flag.Int("tail", 1000, "number of log lines to load when opening logs")
+		runtime     = flag.String("runtime", "auto", "container engine: auto, docker or podman (ssh: remote CLI; local: socket lookup)")
 		noMux       = flag.Bool("no-ssh-mux", false, "don't share one ssh connection (ControlMaster) for all requests")
 		noMouse     = flag.Bool("no-mouse", false, "disable mouse support")
 		showVersion = flag.BoolP("version", "v", false, "print version and exit")
 	)
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "ctop — a top-like TUI for docker containers\n\nUsage: ctop [flags]\n\n")
+		fmt.Fprintf(os.Stderr, "ctop — a top-like TUI for docker/podman containers\n\nUsage: ctop [flags]\n\n")
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nExamples:\n  ctop                 local daemon (DOCKER_HOST / current context)\n  ctop -H node         docker on 'node' via ssh (uses ~/.ssh/config)\n  ctop -H me@box:2222  ssh with user and port\n  ctop -H tcp://10.0.0.5:2375\n")
+		fmt.Fprintf(os.Stderr, "\nExamples:\n  ctop                 local daemon (DOCKER_HOST / current context)\n  ctop -H node         docker on 'node' via ssh (uses ~/.ssh/config)\n  ctop -H me@box:2222  ssh with user and port\n  ctop -H tcp://10.0.0.5:2375\n  ctop -H box --runtime podman   podman on a remote host (needs podman.socket enabled there)\n")
 	}
 	flag.Parse()
 	if *showVersion {
@@ -39,11 +40,11 @@ func main() {
 		return
 	}
 
-	spec, err := docker.Resolve(*host, *dctx)
+	spec, err := docker.Resolve(*host, *dctx, *runtime)
 	if err != nil {
 		fatal(err)
 	}
-	cli, err := docker.New(spec, docker.Options{NoSSHMux: *noMux})
+	cli, err := docker.New(spec, docker.Options{NoSSHMux: *noMux, Runtime: *runtime})
 	if err != nil {
 		fatal(err)
 	}
