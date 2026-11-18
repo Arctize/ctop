@@ -24,7 +24,7 @@ func (m *Model) viewSystem(h int) []string {
 		kv("Version", fmt.Sprintf("%s %s", v.Version, sSubtle.Render(fmt.Sprintf("(API %s, min %s, %s)", v.APIVersion, v.MinAPIVersion, v.GoVersion))))
 		for _, c := range v.Components {
 			if c.Name != "Engine" {
-				kv(c.Name, c.Version)
+				kv(c.Name, componentVersion(c.Version))
 			}
 		}
 	}
@@ -130,6 +130,16 @@ func (m *Model) viewSystem(h int) []string {
 		lines = lines[:h]
 	}
 	return lines
+}
+
+// componentVersion tidies component version strings: podman reports whole
+// "--version" outputs, e.g. "crun version 1.2\ncommit: ...\n+SYSTEMD ...".
+func componentVersion(v string) string {
+	v, _, _ = strings.Cut(strings.TrimSpace(v), "\n")
+	if _, after, ok := strings.Cut(v, " version "); ok {
+		v = after
+	}
+	return strings.TrimSpace(v)
 }
 
 var helpSections = []struct {
